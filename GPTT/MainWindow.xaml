@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:GooglePhotoTransferTool" xmlns:converters="clr-namespace:GooglePhotoTransferTool.Converters" xmlns:ui="clr-namespace:GooglePhotoTransferTool.UI"
         mc:Ignorable="d"
-        d:Height="340"
+        d:Height="350"
         BorderThickness="1"
         BorderBrush="DimGray"
         Height="210"

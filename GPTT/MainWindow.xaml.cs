@@ -191,7 +191,7 @@ namespace GooglePhotoTransferTool
 
         private void RefreshWindowHeight()
         {
-            this.Height = (OriginDevice != null || DestinationDevice != null) ? 340 : 210;
+            this.Height = (OriginDevice != null || DestinationDevice != null) ? 350 : 210;
         }
 
         #endregion
