@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36401.2 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AndroidDevManager", "AndroidDevManager.csproj", "{1341F44C-35E0-4C05-9CA2-DA5EA9E2CDB8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GooglePhotoManager", "GooglePhotoManager.csproj", "{512E31F0-87C5-49D5-9311-2E933AE4C22A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,15 +11,15 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{1341F44C-35E0-4C05-9CA2-DA5EA9E2CDB8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{1341F44C-35E0-4C05-9CA2-DA5EA9E2CDB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{1341F44C-35E0-4C05-9CA2-DA5EA9E2CDB8}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{1341F44C-35E0-4C05-9CA2-DA5EA9E2CDB8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{512E31F0-87C5-49D5-9311-2E933AE4C22A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{512E31F0-87C5-49D5-9311-2E933AE4C22A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{512E31F0-87C5-49D5-9311-2E933AE4C22A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{512E31F0-87C5-49D5-9311-2E933AE4C22A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {7FC24B3E-DAB9-47CF-8F60-D7BBF1E78AC4}
+		SolutionGuid = {947BACF8-C80B-4D5A-A622-4FC660B8CC9C}
 	EndGlobalSection
 EndGlobal
