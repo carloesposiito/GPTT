@@ -222,34 +222,84 @@ class Program
         while (_adbManager.CurrentUser == null);
     }
 
-    /// <summary>
-    /// 
-    /// </summary>
-    private static async Task TransferWizard()
+  
+
+
+
+
+
+
+    private async static Task TransferWizard()
     {
-
-    // Label to try again just in case unlimited backup device is not found anymore
-    TryAgain:
-
-        if (_adbManager.UnlimitedDevice != null)
+        do
         {
-            if (_adbManager.OriginDevices.Count > 0)
-            {
+            // Label to try again just in case unlimited backup device is not found anymore
+            TryAgain:
 
+            if (_adbManager.UnlimitedDevice != null)
+            {
+                // Check if devices different from unlimited backup one are set
+                if (_adbManager.OriginDevices.Count > 0)
+                {
+
+                }
+                else
+                {
+                    while (_adbManager.OriginDevices.Count.Equals(0))
+                    {
+                        Console.WriteLine($"(1) Cerca ancora");
+                        Console.WriteLine($"(2) Connetti via ADB Wireless");
+                        Console.WriteLine($"(3) Associa via ADB Wireless (se mai connesso precedentemente)");
+                        Console.WriteLine();
+                        Console.Write($"Inserisci la scelta desiderata oppure (0) per chiudere il programma: ");
+
+                        // Switch according to user choice
+                        switch (Console.ReadLine())
+                        {
+                            case "0":
+                                await Exit();
+                                break;
+
+                            case "1":
+                                await _adbManager.ScanDevicesAsync();
+                                break;
+
+                            case "2":
+                                await WirelessAdbWizard(pairingNeeded: false);
+                                break;
+
+                            case "3":
+                                await WirelessAdbWizard(pairingNeeded: true);
+                                break;
+
+                            default:
+                                Console.WriteLine("La scelta effettuata non è valida.");
+                                break;
+                        }
+                    }
+                    
+
+
+
+
+
+                   
+                }
+                Console.WriteLine();
             }
             else
             {
-                Console.WriteLine("Non è stato trovato nessun dispositivo da cui prelevare le foto.");
+                Console.WriteLine($"\"{AdbManager.UNLIMITED_BK_DEVICE_NAME}\" non è stato trovato o non è più connesso.");
+                await UnlimitedDeviceWizard();
             }
-            Console.WriteLine();
         }
-        else
-        {
-            Console.WriteLine("Il dispositivo non è stato trovato.");
-            await UnlimitedDeviceWizard();
-            goto TryAgain;
-        }
+        while (_adbManager.UnlimitedDevice == null);
     }
+
+
+
+
+
 
     /// <summary>
     /// Exits program killing ADB server.
