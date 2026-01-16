@@ -11,11 +11,8 @@ namespace GooglePhotoManager.Model
     /// </summary>
     internal class AdbManager
     {
-        #region "Constants about unlimited device name and product"
+        #region "Constants"
 
-        internal const string UNLIMITED_BK_DEVICE_NAME = "Pixel 5 (redfin)";
-        internal const string UNLIMITED_BK_DEVICE_MODEL = "Pixel_5";
-        internal const string UNLIMITED_BK_DEVICE_PRODUCT = "redfin";
         internal const int USERSPACE_CHANGE_TIME = 6000;
 
         #endregion
@@ -25,13 +22,14 @@ namespace GooglePhotoManager.Model
         private string _baseDir = string.Empty;
         private string _platformToolsZipFilename = string.Empty;
         private string _platformToolsDir = string.Empty;
-        private AdbServer _adbServer;
-        private AdbClient _adbClient;
+        private AdbServer _adbServer = null!;
+        private AdbClient _adbClient = null!;
+        private ConfigManager _configManager = null!;
         private List<DeviceData> _devices = new List<DeviceData>();
         private List<DeviceData> _originDevices = new List<DeviceData>();
-        private DeviceData _unlimitedDevice;
+        private DeviceData? _backupDevice;
         private Dictionary<string, MyUser> _users = new();
-        private MyUser _currentUser = null;
+        private MyUser? _currentUser = null;
 
         #endregion
 
@@ -39,9 +37,20 @@ namespace GooglePhotoManager.Model
 
         public List<DeviceData> Devices { get => _devices; set => _devices = value; }
         public List<DeviceData> OriginDevices { get => _originDevices; set => _originDevices = value; }
-        public DeviceData UnlimitedDevice { get => _unlimitedDevice; set => _unlimitedDevice = value; }
+        public DeviceData? BackupDevice { get => _backupDevice; set => _backupDevice = value; }
         internal Dictionary<string, MyUser> Users { get => _users; set => _users = value; }
-        internal MyUser CurrentUser { get => _currentUser; set => _currentUser = value; }
+        internal MyUser? CurrentUser { get => _currentUser; set => _currentUser = value; }
+        internal ConfigManager Config { get => _configManager; }
+
+        /// <summary>
+        /// Nome descrittivo del dispositivo di backup configurato.
+        /// </summary>
+        public string BackupDeviceName => _configManager?.BackupDeviceName ?? "Non configurato";
+
+        /// <summary>
+        /// Indica se il dispositivo di backup è connesso.
+        /// </summary>
+        public bool IsBackupDeviceConnected => _backupDevice != null;
 
         #endregion
 
@@ -52,7 +61,8 @@ namespace GooglePhotoManager.Model
         /// </summary>
         internal async Task<bool> Initialize()
         {
-            Console.WriteLine("Servizio ADB");
+            // Load configuration
+            _configManager = new ConfigManager();
 
             // Solve directories path
             _baseDir = Directory.GetCurrentDirectory();
@@ -65,17 +75,10 @@ namespace GooglePhotoManager.Model
 
             if (CheckDependencies() && await StartServiceAsync())
             {
-                Console.WriteLine("Inizializzazione completata e servizio avviato");
-
-                // Write current ADB settings
-                Console.WriteLine($"Dispostivo di backup: {UNLIMITED_BK_DEVICE_NAME}");
-                Console.WriteLine();
                 return true;
             }
             else
             {
-                Console.WriteLine("Inizializzazione non riuscita");
-                Console.WriteLine();
                 return false;
             }
         }
@@ -229,13 +232,14 @@ namespace GooglePhotoManager.Model
 
         /// <summary>
         /// Scan devices and populates <see cref="Devices"/> list.<br/>
-        /// If unlimited backup device is found, populates <see cref="UnlimitedDevice"/> object.<br/>
+        /// If backup device is found, populates <see cref="BackupDevice"/> object.<br/>
         /// Handles exceptions.
         /// </summary>
         internal async Task ScanDevicesAsync()
         {
             _devices.Clear();
-            _unlimitedDevice = null;
+            _originDevices.Clear();
+            _backupDevice = null;
 
             try
             {
@@ -247,9 +251,9 @@ namespace GooglePhotoManager.Model
                         {
                             if (device.State.Equals(DeviceState.Online))
                             {
-                                if (device.Model.Equals(UNLIMITED_BK_DEVICE_MODEL) && device.Product.Equals(UNLIMITED_BK_DEVICE_PRODUCT))
+                                if (_configManager.IsBackupDevice(device.Model, device.Product))
                                 {
-                                    _unlimitedDevice = device;
+                                    _backupDevice = device;
                                 }
                                 else
                                 {
@@ -271,7 +275,8 @@ namespace GooglePhotoManager.Model
             catch (Exception exception)
             {
                 _devices.Clear();
-                _unlimitedDevice = null;
+                _originDevices.Clear();
+                _backupDevice = null;
                 Utilities.DisplayException(GetType().ToString(), "ScanDevicesAsync", exception.Message);
             }
         }
@@ -343,7 +348,7 @@ namespace GooglePhotoManager.Model
 
             try
             {
-                if (_unlimitedDevice != null)
+                if (_backupDevice != null)
                 {
                     using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
                     {
@@ -353,7 +358,7 @@ namespace GooglePhotoManager.Model
 
                             await _adbClient.ExecuteRemoteCommandAsync(
                                 "pm list users",
-                                _unlimitedDevice,
+                                _backupDevice,
                                 receiver,
                                 cts.Token
                             );
@@ -418,7 +423,7 @@ namespace GooglePhotoManager.Model
 
             try
             {
-                if (_unlimitedDevice != null)
+                if (_backupDevice != null)
                 {
                     using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
                     {
@@ -428,7 +433,7 @@ namespace GooglePhotoManager.Model
 
                             await _adbClient.ExecuteRemoteCommandAsync(
                                 "dumpsys activity activities",
-                                _unlimitedDevice,
+                                _backupDevice,
                                 receiver,
                                 cts.Token
                             );
@@ -500,7 +505,7 @@ namespace GooglePhotoManager.Model
                             // Change user space on unlimited backup device according to passed user ID
                             await _adbClient.ExecuteRemoteCommandAsync(
                                 $"am switch-user {currentUser.Id}",
-                                _unlimitedDevice,
+                                _backupDevice,
                                 receiver,
                                 cts.Token
                             );
@@ -675,7 +680,10 @@ namespace GooglePhotoManager.Model
             return pushedFilesCount;
         }
 
-        private async Task<List<string>> GetFolderFilesAsync(DeviceData targetDevice, string deviceFolder = "DCIM/Camera")
+        /// <summary>
+        /// Ottiene la lista dei file in una cartella del dispositivo.
+        /// </summary>
+        internal async Task<List<string>> GetFolderFilesAsync(DeviceData targetDevice, string deviceFolder = "DCIM/Camera")
         {
             // Remove slash at the start and end of the device path
             deviceFolder = deviceFolder.Trim('/');
@@ -692,6 +700,93 @@ namespace GooglePhotoManager.Model
                 .Select(f => f.Trim())
                 .Where(f => !f.EndsWith("/"))       // Needed to exclude subdirectories
                 .ToList();
+        }
+
+        /// <summary>
+        /// Ottiene la lista delle cartelle nella root dello storage del dispositivo.
+        /// </summary>
+        internal async Task<List<string>> GetRootFoldersAsync(DeviceData targetDevice)
+        {
+            var receiver = new ConsoleOutputReceiver();
+
+            // List only directories in /sdcard
+            await AdbClient.Instance.ExecuteRemoteCommandAsync("ls -1 /sdcard/", targetDevice, receiver);
+
+            var items = receiver.ToString()
+                .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(f => f.Trim())
+                .Where(f => !string.IsNullOrWhiteSpace(f))
+                .ToList();
+
+            // Filter to get only directories (we need another command to check)
+            var folders = new List<string>();
+            foreach (var item in items)
+            {
+                var checkReceiver = new ConsoleOutputReceiver();
+                await AdbClient.Instance.ExecuteRemoteCommandAsync($"test -d /sdcard/\"{item}\" && echo 'DIR'", targetDevice, checkReceiver);
+                if (checkReceiver.ToString().Trim() == "DIR")
+                {
+                    folders.Add(item);
+                }
+            }
+
+            return folders;
+        }
+
+        /// <summary>
+        /// Trasferisce file dal PC alla cartella Documents del dispositivo.
+        /// </summary>
+        /// <param name="targetDevice">Dispositivo di destinazione.</param>
+        /// <param name="localFilePaths">Percorsi completi dei file locali da trasferire.</param>
+        /// <returns>Numero di file trasferiti con successo.</returns>
+        internal async Task<int> PushToDocumentsAsync(DeviceData targetDevice, List<string> localFilePaths)
+        {
+            return await PushFilesAsync(targetDevice, localFilePaths, "Documents");
+        }
+
+        /// <summary>
+        /// Esegue il backup di una cartella del dispositivo sul PC.
+        /// </summary>
+        /// <param name="targetDevice">Dispositivo da cui fare il backup.</param>
+        /// <param name="deviceFolder">Nome della cartella sul dispositivo.</param>
+        /// <param name="localDestinationFolder">Cartella di destinazione locale (opzionale, default: cartella corrente/Backup).</param>
+        /// <returns>Risultato del trasferimento.</returns>
+        internal async Task<TransferResult> BackupFolderAsync(DeviceData targetDevice, string deviceFolder, string? localDestinationFolder = null)
+        {
+            TransferResult result = new TransferResult();
+
+            try
+            {
+                // Get files from device folder
+                List<string> files = await GetFolderFilesAsync(targetDevice, deviceFolder);
+                result.ToBePulledCount = files.Count;
+
+                if (files.Count == 0)
+                {
+                    result.FolderPath = string.Empty;
+                    return result;
+                }
+
+                // Create local destination folder
+                string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+                string folderName = deviceFolder.Replace("/", "_").Replace("\\", "_");
+                string localDir = localDestinationFolder ?? Path.Combine(
+                    Directory.GetCurrentDirectory(),
+                    "Backup",
+                    $"{targetDevice.Model}_{folderName}_{timestamp}"
+                );
+                result.FolderPath = localDir;
+
+                // Pull files
+                result.PulledCount = await PullFilesAsync(targetDevice, files, localDir, deviceFolder);
+                result.AllFilesSynced = result.PulledCount == result.ToBePulledCount;
+            }
+            catch (Exception exception)
+            {
+                Utilities.DisplayException(GetType().ToString(), "BackupFolderAsync", exception.Message);
+            }
+
+            return result;
         }
 
         internal async Task<TransferResult> TransferPhotos(DeviceData originDevice, DeviceData destinationDevice, bool deleteFromOriginDevice)
