@@ -2,7 +2,10 @@
 using AdvancedSharpAdbClient.Models;
 using AdvancedSharpAdbClient.Receivers;
 using GooglePhotoManager.Utils;
+using System.Diagnostics;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
+using L = GooglePhotoManager.Utils.Localization;
 
 namespace GooglePhotoManager.Model
 {
@@ -22,6 +25,7 @@ namespace GooglePhotoManager.Model
         private string _baseDir = string.Empty;
         private string _platformToolsZipFilename = string.Empty;
         private string _platformToolsDir = string.Empty;
+        private string _adbPath = string.Empty;
         private AdbServer _adbServer = null!;
         private AdbClient _adbClient = null!;
         private ConfigManager _configManager = null!;
@@ -30,6 +34,30 @@ namespace GooglePhotoManager.Model
         private DeviceData? _backupDevice;
         private Dictionary<string, MyUser> _users = new();
         private MyUser? _currentUser = null;
+
+        #endregion
+
+        #region "Platform Detection"
+
+        /// <summary>
+        /// Indica se il sistema operativo è Windows.
+        /// </summary>
+        private static bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+        /// <summary>
+        /// Indica se il sistema operativo è Linux.
+        /// </summary>
+        private static bool IsLinux => RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
+
+        /// <summary>
+        /// Indica se il sistema operativo è macOS.
+        /// </summary>
+        private static bool IsMacOS => RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
+
+        /// <summary>
+        /// Nome del file eseguibile ADB in base al sistema operativo.
+        /// </summary>
+        private static string AdbExecutableName => IsWindows ? "adb.exe" : "adb";
 
         #endregion
 
@@ -64,10 +92,10 @@ namespace GooglePhotoManager.Model
             // Load configuration
             _configManager = new ConfigManager();
 
-            // Solve directories path
+            // Solve directories path (cross-platform)
             _baseDir = Directory.GetCurrentDirectory();
-            _platformToolsZipFilename = $"{_baseDir}\\PlatformTools.zip";
-            _platformToolsDir = $"{_baseDir}\\PlatformTools";
+            _platformToolsZipFilename = Path.Combine(_baseDir, "PlatformTools.zip");
+            _platformToolsDir = Path.Combine(_baseDir, "PlatformTools");
 
             // Create adb objects
             _adbServer = new AdbServer();
@@ -85,6 +113,8 @@ namespace GooglePhotoManager.Model
 
         /// <summary>
         /// Check if all needed files to make ADB working exist.<br/>
+        /// On Windows: extracts embedded Platform Tools.<br/>
+        /// On Linux/macOS: searches for ADB in system PATH.<br/>
         /// Handles exception writing to console and returning false.
         /// </summary>
         private bool CheckDependencies()
@@ -93,83 +123,16 @@ namespace GooglePhotoManager.Model
 
             try
             {
-                bool recreateFolder = true;
-
-                // If platform tools folder exists, check that all files are existing
-                if (Directory.Exists(_platformToolsDir))
+                if (IsWindows)
                 {
-                    if (Directory.GetFiles(_platformToolsDir).Length.Equals(14))
-                    {
-                        // Everything is ok
-                        recreateFolder = false;
-                    }
-                    else
-                    {
-                        // If something is missing, delete folder
-                        Directory.Delete(_platformToolsDir, true);
-                    }
+                    // Windows: use embedded Platform Tools
+                    checkResult = CheckWindowsDependencies();
                 }
-
-                // If needed to recreate platform tools folder
-                if (recreateFolder)
+                else
                 {
-                    // Create directory (not existing atm) where files will be extracted
-                    Directory.CreateDirectory(_platformToolsDir);
-
-                    // Recreate zip file from resources (if not existing)
-                    if (!File.Exists(_platformToolsZipFilename))
-                    {
-                        var platformToolsZip = Properties.Resources.PlatformTools;
-                        File.WriteAllBytes(_platformToolsZipFilename, platformToolsZip);
-                    }
-
-                    // If zip file created successfully
-                    if (File.Exists(_platformToolsZipFilename))
-                    {
-                        #region "Extract zip into previously created folder"
-
-                        using (var archive = ZipFile.OpenRead(_platformToolsZipFilename))
-                        {
-                            foreach (var entry in archive.Entries)
-                            {
-                                string destinationPath = Path.GetFullPath(Path.Combine(_platformToolsDir, entry.FullName));
-
-                                // Zip slip protection
-                                if (!destinationPath.StartsWith(Path.GetFullPath(_platformToolsDir), StringComparison.OrdinalIgnoreCase))
-                                {
-                                    throw new Exception("File zip non sicuro");
-                                }
-
-                                // Directory
-                                if (string.IsNullOrEmpty(entry.Name))
-                                {
-                                    Directory.CreateDirectory(destinationPath);
-                                    continue;
-                                }
-
-                                string directory = Path.GetDirectoryName(destinationPath);
-                                if (!string.IsNullOrEmpty(directory))
-                                {
-                                    Directory.CreateDirectory(directory);
-                                }
-
-                                // Extract with overwrite flag set to true just in case
-                                entry.ExtractToFile(destinationPath, true);
-                            }
-                        }
-
-                        #endregion
-                    }
-
-                    // If platform tools zip exists delete it
-                    if (File.Exists(_platformToolsZipFilename))
-                    {
-                        File.Delete(_platformToolsZipFilename);
-                    }
+                    // Linux/macOS: search for ADB in system
+                    checkResult = CheckUnixDependencies();
                 }
-
-                // Update result
-                checkResult = Directory.Exists(_platformToolsDir) && Directory.GetFiles(_platformToolsDir).Length.Equals(14);
             }
             catch (Exception exception)
             {
@@ -178,6 +141,157 @@ namespace GooglePhotoManager.Model
             }
 
             return checkResult;
+        }
+
+        /// <summary>
+        /// Checks dependencies on Windows (extracts embedded Platform Tools).
+        /// </summary>
+        private bool CheckWindowsDependencies()
+        {
+            bool recreateFolder = true;
+
+            // If platform tools folder exists, check that all files are existing
+            if (Directory.Exists(_platformToolsDir))
+            {
+                if (Directory.GetFiles(_platformToolsDir).Length.Equals(14))
+                {
+                    // Everything is ok
+                    recreateFolder = false;
+                }
+                else
+                {
+                    // If something is missing, delete folder
+                    Directory.Delete(_platformToolsDir, true);
+                }
+            }
+
+            // If needed to recreate platform tools folder
+            if (recreateFolder)
+            {
+                // Create directory (not existing atm) where files will be extracted
+                Directory.CreateDirectory(_platformToolsDir);
+
+                // Recreate zip file from resources (if not existing)
+                if (!File.Exists(_platformToolsZipFilename))
+                {
+                    var platformToolsZip = Properties.Resources.PlatformTools;
+                    File.WriteAllBytes(_platformToolsZipFilename, platformToolsZip);
+                }
+
+                // If zip file created successfully
+                if (File.Exists(_platformToolsZipFilename))
+                {
+                    #region "Extract zip into previously created folder"
+
+                    using (var archive = ZipFile.OpenRead(_platformToolsZipFilename))
+                    {
+                        foreach (var entry in archive.Entries)
+                        {
+                            string destinationPath = Path.GetFullPath(Path.Combine(_platformToolsDir, entry.FullName));
+
+                            // Zip slip protection
+                            if (!destinationPath.StartsWith(Path.GetFullPath(_platformToolsDir), StringComparison.OrdinalIgnoreCase))
+                            {
+                                throw new Exception("File zip non sicuro");
+                            }
+
+                            // Directory
+                            if (string.IsNullOrEmpty(entry.Name))
+                            {
+                                Directory.CreateDirectory(destinationPath);
+                                continue;
+                            }
+
+                            string? directory = Path.GetDirectoryName(destinationPath);
+                            if (!string.IsNullOrEmpty(directory))
+                            {
+                                Directory.CreateDirectory(directory);
+                            }
+
+                            // Extract with overwrite flag set to true just in case
+                            entry.ExtractToFile(destinationPath, true);
+                        }
+                    }
+
+                    #endregion
+                }
+
+                // If platform tools zip exists delete it
+                if (File.Exists(_platformToolsZipFilename))
+                {
+                    File.Delete(_platformToolsZipFilename);
+                }
+            }
+
+            // Set ADB path for Windows
+            _adbPath = Path.Combine(_platformToolsDir, AdbExecutableName);
+
+            // Update result
+            return Directory.Exists(_platformToolsDir) &&
+                   Directory.GetFiles(_platformToolsDir).Length.Equals(14) &&
+                   File.Exists(_adbPath);
+        }
+
+        /// <summary>
+        /// Checks dependencies on Linux/macOS (searches for ADB in system).
+        /// </summary>
+        private bool CheckUnixDependencies()
+        {
+            // Common paths where ADB might be installed
+            string[] possiblePaths = new[]
+            {
+                "/usr/bin/adb",
+                "/usr/local/bin/adb",
+                "/opt/android-sdk/platform-tools/adb",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Android/Sdk/platform-tools/adb"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "android-sdk/platform-tools/adb")
+            };
+
+            // First check common paths
+            foreach (string path in possiblePaths)
+            {
+                if (File.Exists(path))
+                {
+                    _adbPath = path;
+                    return true;
+                }
+            }
+
+            // Try to find ADB using 'which' command
+            try
+            {
+                var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "which",
+                        Arguments = "adb",
+                        RedirectStandardOutput = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd().Trim();
+                process.WaitForExit();
+
+                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output) && File.Exists(output))
+                {
+                    _adbPath = output;
+                    return true;
+                }
+            }
+            catch
+            {
+                // Ignore errors from 'which' command
+            }
+
+            // ADB not found
+            Console.WriteLine(L.AdbNotFound);
+            Console.WriteLine(L.AdbInstallLinux);
+            Console.WriteLine(L.AdbInstallMac);
+            return false;
         }
 
         /// <summary>
@@ -203,14 +317,14 @@ namespace GooglePhotoManager.Model
                             await _adbServer.StopServerAsync();
                         }
 
-                        string adbExePath = Path.Combine(_platformToolsDir, "adb.exe");
-                        if (!File.Exists(adbExePath))
+                        // Verify ADB path exists
+                        if (string.IsNullOrEmpty(_adbPath) || !File.Exists(_adbPath))
                         {
-                            throw new Exception("File \"adb.exe\" non trovato");
+                            throw new Exception($"File ADB non trovato: {_adbPath}");
                         }
 
                         // Start server
-                        var startResult = await _adbServer.StartServerAsync(adbExePath, true);
+                        var startResult = await _adbServer.StartServerAsync(_adbPath, true);
 
                         // Check result
                         operationResult = startResult.Equals(StartServerResult.Started) || startResult.Equals(StartServerResult.AlreadyRunning) || startResult.Equals(StartServerResult.RestartedOutdatedDaemon);
@@ -525,7 +639,7 @@ namespace GooglePhotoManager.Model
                             {
                                 await Task.Delay(250);
                                 fromDevice = await GetCurrentUserAsync();
-                                Console.WriteLine("Impostazione utente in corso...");
+                                Console.WriteLine(L.SettingUser);
                             }
 
                             _currentUser = currentUser;
@@ -673,8 +787,7 @@ namespace GooglePhotoManager.Model
             if (notFoundFiles.Count > 0)
             {
                 string missingFiles = string.Join("\n", notFoundFiles);
-                Console.WriteLine("Operazione completata. Saltati i seguenti file perchè non trovati:\n" +
-                    $"{missingFiles}");
+                Console.WriteLine($"{L.OperationCompletedSkippedFiles}\n{missingFiles}");
             }
 
             return pushedFilesCount;
@@ -843,10 +956,10 @@ namespace GooglePhotoManager.Model
             extractionCompleted = tR.PulledCount.Equals(tR.ToBePulledCount);
             if (!extractionCompleted)
             {
-                Console.WriteLine($"Alcune foto sono state saltate durante l'estrazione dal dispositivo di origine ({tR.PulledCount}/{tR.ToBePulledCount})!");
-                Console.Write("Vuoi procedere ugualmente? (S/N): ");
+                Console.WriteLine(L.SomePhotosSkippedDuringExtraction(tR.PulledCount, tR.ToBePulledCount));
+                Console.Write(L.ContinueAnyway);
                 string? response = Console.ReadLine();
-                extractionCompleted = response?.Trim().ToUpper() == "S";
+                extractionCompleted = response?.Trim().ToUpper() == "S" || response?.Trim().ToUpper() == "Y";
             }
 
             // Push files into destination device if ok
@@ -882,8 +995,8 @@ namespace GooglePhotoManager.Model
                 }
                 else
                 {
-                    Console.WriteLine($"Alcune foto sono state saltate durante il trasferimento al dispositivo di destinazione ({tR.PushedCount}/{tR.ToBePushedCount})!");
-                    Console.WriteLine("Le foto non saranno eliminate dal dispositivo di origine per motivi di sicurezza.");
+                    Console.WriteLine(L.SomePhotosSkippedDuringTransfer(tR.PushedCount, tR.ToBePushedCount));
+                    Console.WriteLine(L.PhotosNotDeletedForSafety);
                 }
             }
 
@@ -923,8 +1036,7 @@ namespace GooglePhotoManager.Model
             if (notFoundFiles.Count > 0)
             {
                 string missingFiles = string.Join("\n", notFoundFiles);
-                Console.WriteLine("Operazione completata. Le seguenti foto non sono state trovate nel dispositivo:\n" +
-                    $"{missingFiles}");
+                Console.WriteLine($"{L.OperationCompletedPhotosNotFound}\n{missingFiles}");
             }
 
             return deletedFilesCount;

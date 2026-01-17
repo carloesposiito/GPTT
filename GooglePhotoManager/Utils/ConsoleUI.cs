@@ -28,6 +28,29 @@ namespace GooglePhotoManager.Utils
 
         #endregion
 
+        #region "Private properties"
+
+        /// <summary>
+        /// Ottiene la larghezza della console in modo sicuro (cross-platform).
+        /// </summary>
+        private static int SafeConsoleWidth
+        {
+            get
+            {
+                try
+                {
+                    int width = Console.WindowWidth;
+                    return width > 0 ? width : 80;
+                }
+                catch
+                {
+                    return 80; // Default width
+                }
+            }
+        }
+
+        #endregion
+
         #region "Public methods"
 
         /// <summary>
@@ -262,7 +285,7 @@ namespace GooglePhotoManager.Utils
                 _spinnerTask = null;
 
                 // Pulisce la riga dello spinner
-                Console.Write("\r" + new string(' ', Console.WindowWidth - 1) + "\r");
+                Console.Write("\r" + new string(' ', SafeConsoleWidth - 1) + "\r");
             }
         }
 

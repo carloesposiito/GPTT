@@ -1,3 +1,4 @@
+using GooglePhotoManager.Utils;
 using System.Xml.Linq;
 
 namespace GooglePhotoManager.Model
@@ -12,6 +13,7 @@ namespace GooglePhotoManager.Model
         private const string CONFIG_FILENAME = "config.xml";
         private const string DEFAULT_BACKUP_DEVICE_MODEL = "Pixel_5";
         private const string DEFAULT_BACKUP_DEVICE_PRODUCT = "redfin";
+        private const string DEFAULT_LANGUAGE = "Italian";
 
         #endregion
 
@@ -20,6 +22,7 @@ namespace GooglePhotoManager.Model
         private readonly string _configFilePath;
         private string _backupDeviceModel = DEFAULT_BACKUP_DEVICE_MODEL;
         private string _backupDeviceProduct = DEFAULT_BACKUP_DEVICE_PRODUCT;
+        private Localization.Language _language = Localization.Language.Italian;
 
         #endregion
 
@@ -47,6 +50,19 @@ namespace GooglePhotoManager.Model
         /// Nome descrittivo del dispositivo di backup.
         /// </summary>
         public string BackupDeviceName => $"{BackupDeviceModel} ({BackupDeviceProduct})";
+
+        /// <summary>
+        /// Lingua dell'applicazione.
+        /// </summary>
+        public Localization.Language Language
+        {
+            get => _language;
+            set
+            {
+                _language = value;
+                Localization.CurrentLanguage = value;
+            }
+        }
 
         #endregion
 
@@ -76,6 +92,7 @@ namespace GooglePhotoManager.Model
 
                     if (root != null)
                     {
+                        // Load backup device settings
                         XElement? backupDevice = root.Element("BackupDevice");
                         if (backupDevice != null)
                         {
@@ -92,6 +109,20 @@ namespace GooglePhotoManager.Model
                                 _backupDeviceProduct = product;
                             }
                         }
+
+                        // Load language setting
+                        XElement? settings = root.Element("Settings");
+                        if (settings != null)
+                        {
+                            string? language = settings.Element("Language")?.Value;
+                            if (!string.IsNullOrWhiteSpace(language))
+                            {
+                                _language = Localization.ParseLanguage(language);
+                            }
+                        }
+
+                        // Apply language
+                        Localization.CurrentLanguage = _language;
                     }
                 }
                 else
@@ -105,6 +136,8 @@ namespace GooglePhotoManager.Model
                 // In caso di errore usa i valori di default
                 _backupDeviceModel = DEFAULT_BACKUP_DEVICE_MODEL;
                 _backupDeviceProduct = DEFAULT_BACKUP_DEVICE_PRODUCT;
+                _language = Localization.Language.Italian;
+                Localization.CurrentLanguage = _language;
             }
         }
 
@@ -121,6 +154,9 @@ namespace GooglePhotoManager.Model
                         new XElement("BackupDevice",
                             new XElement("Model", _backupDeviceModel),
                             new XElement("Product", _backupDeviceProduct)
+                        ),
+                        new XElement("Settings",
+                            new XElement("Language", Localization.LanguageToString(_language))
                         )
                     )
                 );
@@ -142,6 +178,17 @@ namespace GooglePhotoManager.Model
         {
             _backupDeviceModel = model;
             _backupDeviceProduct = product;
+            Save();
+        }
+
+        /// <summary>
+        /// Imposta la lingua e salva la configurazione.
+        /// </summary>
+        /// <param name="language">Lingua da impostare.</param>
+        public void SetLanguage(Localization.Language language)
+        {
+            _language = language;
+            Localization.CurrentLanguage = language;
             Save();
         }
 

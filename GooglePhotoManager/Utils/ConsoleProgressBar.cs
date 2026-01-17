@@ -27,6 +27,25 @@ namespace GooglePhotoManager.Utils
         }
 
         /// <summary>
+        /// Ottiene la larghezza della console in modo sicuro (cross-platform).
+        /// </summary>
+        private static int SafeConsoleWidth
+        {
+            get
+            {
+                try
+                {
+                    int width = Console.WindowWidth;
+                    return width > 0 ? width : 80;
+                }
+                catch
+                {
+                    return 80; // Default width
+                }
+            }
+        }
+
+        /// <summary>
         /// Aggiorna la barra di avanzamento con il file corrente.
         /// </summary>
         /// <param name="currentFileName">Nome del file attualmente in elaborazione.</param>
@@ -44,7 +63,8 @@ namespace GooglePhotoManager.Utils
 
             // Tronca il nome del file se troppo lungo
             string displayFileName = currentFileName;
-            int maxFileNameLength = Console.WindowWidth - _barWidth - 25;
+            int consoleWidth = SafeConsoleWidth;
+            int maxFileNameLength = consoleWidth - _barWidth - 25;
             if (maxFileNameLength < 10) maxFileNameLength = 10;
 
             if (displayFileName.Length > maxFileNameLength)
@@ -53,7 +73,7 @@ namespace GooglePhotoManager.Utils
             }
 
             // Pulisci la riga e scrivi il progresso
-            Console.Write($"\r{_operationName}: [{progressBar}] {percentage,3}% ({_currentItem}/{_totalItems}) {displayFileName}".PadRight(Console.WindowWidth - 1));
+            Console.Write($"\r{_operationName}: [{progressBar}] {percentage,3}% ({_currentItem}/{_totalItems}) {displayFileName}".PadRight(consoleWidth - 1));
 
             _lastPercentage = percentage;
         }
@@ -64,7 +84,7 @@ namespace GooglePhotoManager.Utils
         public void Complete()
         {
             string progressBar = new string('█', _barWidth);
-            Console.Write($"\r{_operationName}: [{progressBar}] 100% ({_totalItems}/{_totalItems}) Completato!".PadRight(Console.WindowWidth - 1));
+            Console.Write($"\r{_operationName}: [{progressBar}] 100% ({_totalItems}/{_totalItems}) Completato!".PadRight(SafeConsoleWidth - 1));
             Console.WriteLine();
         }
     }
